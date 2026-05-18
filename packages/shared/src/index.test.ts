@@ -6,6 +6,7 @@ describe("shared item shape", () => {
     const item: Item = {
       id: "item_1",
       label: "exp(x)",
+      latex: "e^{x}",
       expression: "exp(x)",
       eml_tree: "eml(x, 1)",
       depth: 1,
@@ -17,4 +18,3 @@ describe("shared item shape", () => {
     expect(item.known_key).toBe("exp_x");
   });
 });
-

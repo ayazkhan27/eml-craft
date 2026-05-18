@@ -2,6 +2,10 @@ import type { Item } from "@eml-craft/shared";
 import { MousePointer2 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { complexityLabel } from "../lib/expression";
+import { MathLabel } from "./MathLabel";
+
+const NODE_WIDTH = 150;
+const NODE_HEIGHT = 58;
 
 export interface CanvasNode {
   id: string;
@@ -21,6 +25,7 @@ interface CanvasProps {
   selection: Selection;
   onSelectNode: (nodeId: string) => void;
   onMoveNode: (nodeId: string, x: number, y: number) => void;
+  onMergeNodes: (leftNodeId: string, rightNodeId: string) => void;
 }
 
 interface DragState {
@@ -37,6 +42,7 @@ export function Canvas({
   selection,
   onSelectNode,
   onMoveNode,
+  onMergeNodes,
 }: CanvasProps) {
   const [drag, setDrag] = useState<DragState | null>(null);
 
@@ -50,7 +56,24 @@ export function Canvas({
       onMoveNode(currentDrag.nodeId, nextX, nextY);
     }
 
-    function handleUp() {
+    function handleUp(event: PointerEvent) {
+      const nextX = Math.max(12, currentDrag.originX + event.clientX - currentDrag.startX);
+      const nextY = Math.max(12, currentDrag.originY + event.clientY - currentDrag.startY);
+      onMoveNode(currentDrag.nodeId, nextX, nextY);
+      const target = nodes.find((node) => {
+        if (node.id === currentDrag.nodeId) return false;
+        const centerX = nextX + NODE_WIDTH / 2;
+        const centerY = nextY + NODE_HEIGHT / 2;
+        return (
+          centerX >= node.x &&
+          centerX <= node.x + NODE_WIDTH &&
+          centerY >= node.y &&
+          centerY <= node.y + NODE_HEIGHT
+        );
+      });
+      if (target) {
+        onMergeNodes(currentDrag.nodeId, target.id);
+      }
       setDrag(null);
     }
 
@@ -60,7 +83,7 @@ export function Canvas({
       window.removeEventListener("pointermove", handleMove);
       window.removeEventListener("pointerup", handleUp);
     };
-  }, [drag, onMoveNode]);
+  }, [drag, nodes, onMergeNodes, onMoveNode]);
 
   return (
     <div className="canvas-surface">
@@ -91,7 +114,9 @@ export function Canvas({
               });
             }}
           >
-            <span className="node-label">{item.label}</span>
+            <span className="node-label">
+              <MathLabel latex={item.latex} label={item.label} />
+            </span>
             <span className="node-meta">{complexityLabel(item)}</span>
           </button>
         );

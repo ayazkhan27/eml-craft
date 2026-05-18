@@ -37,6 +37,7 @@ SAMPLES = (
 class EngineItem:
     id: str
     label: str
+    latex: str
     expression: str
     eml_tree: str
     depth: int
@@ -66,6 +67,10 @@ def normalize_expression(expr: sp.Expr) -> sp.Expr:
 
 def canonical_text(expr: sp.Expr) -> str:
     return sp.sstr(normalize_expression(expr), order="lex")
+
+
+def latex_text(expr: sp.Expr) -> str:
+    return sp.latex(normalize_expression(expr), fold_frac_powers=True, mul_symbol="dot")
 
 
 def item_id_for(expr: sp.Expr) -> str:
@@ -125,6 +130,7 @@ def seed_item(key: str) -> EngineItem:
     return EngineItem(
         id=item_id_for(expr),
         label=entry.label,
+        latex=latex_text(expr),
         expression=canonical_text(expr),
         eml_tree=entry.label,
         depth=0,
@@ -144,6 +150,7 @@ def combine(left: EngineItem, right: EngineItem) -> EngineResult:
     item = EngineItem(
         id=item_id_for(normalized),
         label=label,
+        latex=latex_text(normalized),
         expression=canonical_text(normalized),
         eml_tree=eml_tree,
         depth=max(left.depth, right.depth) + 1,

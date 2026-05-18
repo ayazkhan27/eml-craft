@@ -70,6 +70,26 @@ button {
   font-size: 12px;
 }
 
+.math-label {
+  max-width: 100%;
+}
+
+.math-label .katex {
+  max-width: 100%;
+  font-size: 1em;
+}
+
+.math-label .katex-html {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.math-label.is-block {
+  display: block;
+  overflow-x: auto;
+}
+
 .status-pill {
   display: inline-flex;
   align-items: center;
@@ -228,7 +248,6 @@ button {
   display: block;
   overflow: hidden;
   color: #17201d;
-  font-family: "SFMono-Regular", Consolas, monospace;
   font-size: 14px;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -296,8 +315,7 @@ button {
 .slot strong {
   display: block;
   overflow: hidden;
-  margin-top: 2px;
-  font-family: "SFMono-Regular", Consolas, monospace;
+  margin-top: 1px;
   font-size: 14px;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -380,7 +398,6 @@ button {
 
 .node-label {
   overflow-wrap: anywhere;
-  font-family: "SFMono-Regular", Consolas, monospace;
   font-size: 15px;
   font-weight: 760;
 }
@@ -428,7 +445,6 @@ button {
 .inspector-title h2 {
   overflow-wrap: anywhere;
   margin: 0;
-  font-family: "SFMono-Regular", Consolas, monospace;
   font-size: 18px;
 }
 

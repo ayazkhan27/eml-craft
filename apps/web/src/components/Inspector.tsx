@@ -1,6 +1,7 @@
 import type { Item } from "@eml-craft/shared";
 import { Braces, FunctionSquare, Network } from "lucide-react";
 import { complexityLabel, shortExpression } from "../lib/expression";
+import { MathLabel } from "./MathLabel";
 
 interface InspectorProps {
   item: Item | null;
@@ -26,7 +27,9 @@ export function Inspector({ item }: InspectorProps) {
       </div>
       <div className="inspector-title">
         <FunctionSquare size={18} />
-        <h2>{item.label}</h2>
+        <h2>
+          <MathLabel latex={item.latex} label={item.label} />
+        </h2>
       </div>
       <dl>
         <div>
@@ -35,6 +38,13 @@ export function Inspector({ item }: InspectorProps) {
             Expression
           </dt>
           <dd>{shortExpression(item.expression)}</dd>
+        </div>
+        <div>
+          <dt>
+            <FunctionSquare size={14} />
+            LaTeX
+          </dt>
+          <dd>{shortExpression(item.latex, 120)}</dd>
         </div>
         <div>
           <dt>
@@ -47,4 +57,3 @@ export function Inspector({ item }: InspectorProps) {
     </section>
   );
 }
-

@@ -5,6 +5,7 @@ import { craft, loadState } from "./lib/api";
 import { Canvas, type CanvasNode } from "./components/Canvas";
 import { GoalsPanel } from "./components/GoalsPanel";
 import { Inspector } from "./components/Inspector";
+import { MathLabel } from "./components/MathLabel";
 import { Sidebar } from "./components/Sidebar";
 
 interface Selection {
@@ -110,24 +111,22 @@ export function App() {
     });
   }
 
-  async function runCraft() {
-    if (!leftItem || !rightItem) return;
+  async function craftNodes(left: CanvasNode, right: CanvasNode) {
+    const first = itemsById.get(left.itemId);
+    const second = itemsById.get(right.itemId);
+    if (!first || !second || isCrafting) return;
 
     setIsCrafting(true);
-    setStatus(`Crafting eml(${leftItem.label}, ${rightItem.label})`);
+    setStatus(`Crafting eml(${first.label}, ${second.label})`);
     try {
-      const response = await craft(leftItem.id, rightItem.id);
+      const response = await craft(first.id, second.id);
       setItems((current) => upsertItem(current, response.result));
       setRecipes((current) => upsertRecipe(current, response.recipe));
       setGoals(response.goals);
       setActiveItemId(response.result.id);
-      const leftX = leftNode?.x ?? 320;
-      const leftY = leftNode?.y ?? 240;
-      const rightX = rightNode?.x ?? leftX + 160;
-      const rightY = rightNode?.y ?? leftY;
       setNodes((current) => [
         ...current,
-        makeNode(response.result.id, Math.max(240, (leftX + rightX) / 2 + 96), (leftY + rightY) / 2),
+        makeNode(response.result.id, Math.max(240, (left.x + right.x) / 2 + 96), (left.y + right.y) / 2),
       ]);
       setSelection({});
       setStatus(response.cached ? "Recipe recalled" : "Discovery recorded");
@@ -136,6 +135,19 @@ export function App() {
     } finally {
       setIsCrafting(false);
     }
+  }
+
+  function runCraft() {
+    if (!leftNode || !rightNode) return;
+    void craftNodes(leftNode, rightNode);
+  }
+
+  function mergeNodes(leftNodeId: string, rightNodeId: string) {
+    const first = nodes.find((node) => node.id === leftNodeId);
+    const second = nodes.find((node) => node.id === rightNodeId);
+    if (!first || !second) return;
+    setSelection({ leftNodeId, rightNodeId });
+    void craftNodes(first, second);
   }
 
   return (
@@ -169,12 +181,16 @@ export function App() {
           <div className="craft-bar" aria-label="Crafting controls">
             <div className="slot">
               <span>First input</span>
-              <strong>{leftItem?.label ?? "Select"}</strong>
+              <strong>
+                {leftItem ? <MathLabel latex={leftItem.latex} label={leftItem.label} /> : "Select"}
+              </strong>
             </div>
             <GitBranch size={20} />
             <div className="slot">
               <span>Second input</span>
-              <strong>{rightItem?.label ?? "Select"}</strong>
+              <strong>
+                {rightItem ? <MathLabel latex={rightItem.latex} label={rightItem.label} /> : "Select"}
+              </strong>
             </div>
             <button
               className="primary-action"
@@ -193,6 +209,7 @@ export function App() {
             selection={selection}
             onMoveNode={moveNode}
             onSelectNode={selectNode}
+            onMergeNodes={mergeNodes}
           />
         </section>
 

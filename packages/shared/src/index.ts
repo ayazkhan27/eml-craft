@@ -1,6 +1,7 @@
 export interface Item {
   id: string;
   label: string;
+  latex: string;
   expression: string;
   eml_tree: string;
   depth: number;
@@ -42,4 +43,3 @@ export interface CraftResponse {
   goals: Goal[];
   cached: boolean;
 }
-

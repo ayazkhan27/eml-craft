@@ -34,6 +34,7 @@ class Store:
                 create table if not exists items (
                   id text primary key,
                   label text not null,
+                  latex text not null,
                   expression text not null,
                   eml_tree text not null,
                   depth integer not null,
@@ -59,20 +60,40 @@ class Store:
                 );
                 """
             )
+            self._migrate_items(conn)
             self._seed_items(conn, (engine.seed_item(key) for key in STARTER_KEYS))
+            self._backfill_latex(conn)
             self._seed_goals(conn)
+
+    def _migrate_items(self, conn: sqlite3.Connection) -> None:
+        columns = {
+            row["name"]
+            for row in conn.execute("pragma table_info(items)").fetchall()
+        }
+        if "latex" not in columns:
+            conn.execute("alter table items add column latex text not null default ''")
+
+    def _backfill_latex(self, conn: sqlite3.Connection) -> None:
+        rows = conn.execute("select id, expression, label from items where latex = ''").fetchall()
+        for row in rows:
+            try:
+                latex = engine.latex_text(engine.parse_expression(row["expression"]))
+            except Exception:
+                latex = row["label"]
+            conn.execute("update items set latex = ? where id = ?", (latex, row["id"]))
 
     def _seed_items(self, conn: sqlite3.Connection, items: Iterable[engine.EngineItem]) -> None:
         for item in items:
             conn.execute(
                 """
                 insert or ignore into items
-                  (id, label, expression, eml_tree, depth, known, known_key)
-                values (?, ?, ?, ?, ?, ?, ?)
+                  (id, label, latex, expression, eml_tree, depth, known, known_key)
+                values (?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     item.id,
                     item.label,
+                    item.latex,
                     item.expression,
                     item.eml_tree,
                     item.depth,
@@ -133,12 +154,13 @@ class Store:
             conn.execute(
                 """
                 insert or ignore into items
-                  (id, label, expression, eml_tree, depth, known, known_key)
-                values (?, ?, ?, ?, ?, ?, ?)
+                  (id, label, latex, expression, eml_tree, depth, known, known_key)
+                values (?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     item.id,
                     item.label,
+                    item.latex,
                     item.expression,
                     item.eml_tree,
                     item.depth,
@@ -182,6 +204,7 @@ class Store:
         return Item(
             id=row["id"],
             label=row["label"],
+            latex=row["latex"],
             expression=row["expression"],
             eml_tree=row["eml_tree"],
             depth=row["depth"],

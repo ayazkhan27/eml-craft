@@ -2,6 +2,7 @@ import type { Item } from "@eml-craft/shared";
 import { Plus, Search } from "lucide-react";
 import { useMemo, useState } from "react";
 import { complexityLabel, expressionTone } from "../lib/expression";
+import { MathLabel } from "./MathLabel";
 
 interface SidebarProps {
   items: Item[];
@@ -55,7 +56,9 @@ export function Sidebar({ items, activeItemId, onAddItem, onInspect }: SidebarPr
           >
             <span className={`item-dot ${expressionTone(item)}`} />
             <span className="item-main">
-              <strong>{item.label}</strong>
+              <strong>
+                <MathLabel latex={item.latex} label={item.label} />
+              </strong>
               <small>{complexityLabel(item)}</small>
             </span>
             <button

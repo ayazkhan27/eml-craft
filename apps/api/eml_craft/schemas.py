@@ -6,6 +6,7 @@ from pydantic import BaseModel, Field
 class Item(BaseModel):
     id: str
     label: str
+    latex: str
     expression: str
     eml_tree: str
     depth: int
@@ -46,4 +47,3 @@ class StateResponse(BaseModel):
     items: list[Item]
     recipes: list[Recipe]
     goals: list[Goal]
-

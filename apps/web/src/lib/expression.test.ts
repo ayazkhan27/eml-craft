@@ -7,6 +7,7 @@ describe("expression helpers", () => {
       complexityLabel({
         id: "item",
         label: "x",
+        latex: "x",
         expression: "x",
         eml_tree: "x",
         depth: 0,
@@ -21,4 +22,3 @@ describe("expression helpers", () => {
     expect(shortExpression("abcdefghijklmnopqrstuvwxyz", 8)).toBe("abcdefg…");
   });
 });
-
