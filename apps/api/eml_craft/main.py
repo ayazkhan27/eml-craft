@@ -65,6 +65,16 @@ def goals(db: StoreDep):
     return db.list_goals()
 
 
+@app.post("/api/reset", response_model=StateResponse)
+def reset(db: StoreDep) -> StateResponse:
+    db.reset_game()
+    return StateResponse(
+        items=db.list_items(),
+        recipes=db.list_recipes(),
+        goals=db.list_goals(),
+    )
+
+
 @app.post("/api/craft", response_model=CraftResponse)
 def craft(payload: CraftRequest, db: StoreDep) -> CraftResponse:
     left = db.get_item(payload.left_id)
@@ -86,10 +96,13 @@ def craft(payload: CraftRequest, db: StoreDep) -> CraftResponse:
             cached=True,
         )
 
-    result = engine.combine(
-        engine.EngineItem(**left.model_dump(exclude={"created_at"})),
-        engine.EngineItem(**right.model_dump(exclude={"created_at"})),
-    )
+    try:
+        result = engine.combine(
+            engine.EngineItem(**left.model_dump(exclude={"created_at"})),
+            engine.EngineItem(**right.model_dump(exclude={"created_at"})),
+        )
+    except (engine.ExpressionTooComplexError, engine.InvalidExpressionError) as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
     item = db.upsert_item(result.item)
     recipe = db.create_recipe(left.id, right.id, item.id)
     return CraftResponse(result=item, recipe=recipe, goals=db.list_goals(), cached=False)

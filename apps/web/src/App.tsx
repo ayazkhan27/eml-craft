@@ -1,12 +1,15 @@
 import type { Goal, Item, Recipe } from "@eml-craft/shared";
-import { Atom, FlaskConical, GitBranch, Loader2, Plus, Sparkles } from "lucide-react";
+import { Atom, Eraser, FlaskConical, GitBranch, Loader2, Plus, RotateCcw, Sparkles } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
-import { craft, loadState } from "./lib/api";
+import { craft, loadState, resetGame } from "./lib/api";
 import { Canvas, type CanvasNode } from "./components/Canvas";
+import { GraphPanel } from "./components/GraphPanel";
 import { GoalsPanel } from "./components/GoalsPanel";
 import { Inspector } from "./components/Inspector";
 import { MathLabel } from "./components/MathLabel";
+import { RecipePanel } from "./components/RecipePanel";
 import { Sidebar } from "./components/Sidebar";
+import { playSound } from "./lib/sound";
 
 interface Selection {
   leftNodeId?: string;
@@ -36,6 +39,17 @@ function upsertRecipe(recipes: Recipe[], next: Recipe): Recipe[] {
   return [...recipes, next];
 }
 
+function starterNodes(items: Item[]): CanvasNode[] {
+  const one = items.find((item) => item.label === "1");
+  const x = items.find((item) => item.label === "x");
+  const y = items.find((item) => item.label === "y");
+  return [
+    ...(one ? [makeNode(one.id, 86, 124)] : []),
+    ...(x ? [makeNode(x.id, 86, 218)] : []),
+    ...(y ? [makeNode(y.id, 86, 312)] : []),
+  ];
+}
+
 export function App() {
   const [items, setItems] = useState<Item[]>([]);
   const [recipes, setRecipes] = useState<Recipe[]>([]);
@@ -45,6 +59,7 @@ export function App() {
   const [activeItemId, setActiveItemId] = useState<string | null>(null);
   const [status, setStatus] = useState("Loading math engine");
   const [isCrafting, setIsCrafting] = useState(false);
+  const [shakingNodeIds, setShakingNodeIds] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     let active = true;
@@ -55,13 +70,8 @@ export function App() {
         setRecipes(state.recipes);
         setGoals(state.goals);
         setStatus("Ready");
-        const one = state.items.find((item) => item.label === "1");
-        const x = state.items.find((item) => item.label === "x");
-        setNodes([
-          ...(one ? [makeNode(one.id, 86, 132)] : []),
-          ...(x ? [makeNode(x.id, 86, 226)] : []),
-        ]);
-        setActiveItemId(one?.id ?? x?.id ?? null);
+        setNodes(starterNodes(state.items));
+        setActiveItemId(state.items[0]?.id ?? null);
       })
       .catch((error: Error) => {
         if (!active) return;
@@ -94,10 +104,14 @@ export function App() {
     );
   }
 
-  function selectNode(nodeId: string) {
+  function selectNode(nodeId: string, intent: "click" | "drag") {
     const node = nodes.find((candidate) => candidate.id === nodeId);
     if (node) {
       setActiveItemId(node.itemId);
+    }
+
+    if (intent === "drag") {
+      return;
     }
 
     setSelection((current) => {
@@ -109,6 +123,11 @@ export function App() {
       }
       return { ...current, rightNodeId: nodeId };
     });
+  }
+
+  function shakeNodes(nodeIds: string[]) {
+    setShakingNodeIds(new Set(nodeIds));
+    window.setTimeout(() => setShakingNodeIds(new Set()), 420);
   }
 
   async function craftNodes(left: CanvasNode, right: CanvasNode) {
@@ -124,13 +143,22 @@ export function App() {
       setRecipes((current) => upsertRecipe(current, response.recipe));
       setGoals(response.goals);
       setActiveItemId(response.result.id);
+      playSound(response.result.known ? "known" : "craft");
       setNodes((current) => [
         ...current,
         makeNode(response.result.id, Math.max(240, (left.x + right.x) / 2 + 96), (left.y + right.y) / 2),
       ]);
       setSelection({});
-      setStatus(response.cached ? "Recipe recalled" : "Discovery recorded");
+      setStatus(
+        response.cached
+          ? "Recipe recalled"
+          : response.result.known
+            ? "Discovery recorded"
+            : "Expression generated",
+      );
     } catch (error) {
+      playSound("buzz");
+      shakeNodes([left.id, right.id]);
       setStatus(error instanceof Error ? error.message : "Craft failed");
     } finally {
       setIsCrafting(false);
@@ -150,6 +178,34 @@ export function App() {
     void craftNodes(first, second);
   }
 
+  function clearCanvas() {
+    setNodes(starterNodes(items));
+    setSelection({});
+    setActiveItemId(items[0]?.id ?? null);
+    playSound("reset");
+    setStatus("Canvas cleared");
+  }
+
+  async function hardResetDiscoveries() {
+    setIsCrafting(true);
+    setStatus("Resetting discoveries");
+    try {
+      const state = await resetGame();
+      setItems(state.items);
+      setRecipes(state.recipes);
+      setGoals(state.goals);
+      setNodes(starterNodes(state.items));
+      setSelection({});
+      setActiveItemId(state.items[0]?.id ?? null);
+      playSound("reset");
+      setStatus("Discoveries reset");
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : "Reset failed");
+    } finally {
+      setIsCrafting(false);
+    }
+  }
+
   return (
     <main className="app-shell">
       <header className="topbar">
@@ -162,6 +218,26 @@ export function App() {
         </div>
         <div className="topbar-cluster">
           <span className="metric-pill">{recipes.length} recipes</span>
+          <button
+            className="quiet-action"
+            type="button"
+            onClick={clearCanvas}
+            disabled={isCrafting}
+            title="Clear canvas tiles and keep discoveries"
+          >
+            <Eraser size={16} />
+            Clear canvas
+          </button>
+          <button
+            className="quiet-action danger"
+            type="button"
+            onClick={hardResetDiscoveries}
+            disabled={isCrafting}
+            title="Delete discoveries, recipes, goals progress, and reset the canvas"
+          >
+            <RotateCcw size={16} />
+            Hard reset
+          </button>
           <div className="status-pill">
             {isCrafting ? <Loader2 size={16} className="spin" /> : <Sparkles size={16} />}
             <span>{status}</span>
@@ -207,6 +283,7 @@ export function App() {
             nodes={nodes}
             itemsById={itemsById}
             selection={selection}
+            shakingNodeIds={shakingNodeIds}
             onMoveNode={moveNode}
             onSelectNode={selectNode}
             onMergeNodes={mergeNodes}
@@ -215,7 +292,9 @@ export function App() {
 
         <aside className="right-rail">
           <GoalsPanel goals={goals} />
+          <RecipePanel recipes={recipes} itemsById={itemsById} />
           <Inspector item={activeItem} />
+          <GraphPanel item={activeItem} />
           {activeItem ? (
             <button className="rail-action" type="button" onClick={() => addItemToCanvas(activeItem)}>
               <Plus size={16} />

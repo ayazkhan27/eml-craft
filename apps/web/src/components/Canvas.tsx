@@ -1,11 +1,11 @@
 import type { Item } from "@eml-craft/shared";
 import { MousePointer2 } from "lucide-react";
-import { useEffect, useState } from "react";
+import { type CSSProperties, useEffect, useState } from "react";
 import { complexityLabel } from "../lib/expression";
 import { MathLabel } from "./MathLabel";
 
-const NODE_WIDTH = 150;
-const NODE_HEIGHT = 58;
+const NODE_WIDTH = 176;
+const NODE_HEIGHT = 70;
 
 export interface CanvasNode {
   id: string;
@@ -23,7 +23,8 @@ interface CanvasProps {
   nodes: CanvasNode[];
   itemsById: Map<string, Item>;
   selection: Selection;
-  onSelectNode: (nodeId: string) => void;
+  shakingNodeIds: Set<string>;
+  onSelectNode: (nodeId: string, intent: "click" | "drag") => void;
   onMoveNode: (nodeId: string, x: number, y: number) => void;
   onMergeNodes: (leftNodeId: string, rightNodeId: string) => void;
 }
@@ -40,6 +41,7 @@ export function Canvas({
   nodes,
   itemsById,
   selection,
+  shakingNodeIds,
   onSelectNode,
   onMoveNode,
   onMergeNodes,
@@ -57,6 +59,7 @@ export function Canvas({
     }
 
     function handleUp(event: PointerEvent) {
+      const travel = Math.hypot(event.clientX - currentDrag.startX, event.clientY - currentDrag.startY);
       const nextX = Math.max(12, currentDrag.originX + event.clientX - currentDrag.startX);
       const nextY = Math.max(12, currentDrag.originY + event.clientY - currentDrag.startY);
       onMoveNode(currentDrag.nodeId, nextX, nextY);
@@ -73,6 +76,8 @@ export function Canvas({
       });
       if (target) {
         onMergeNodes(currentDrag.nodeId, target.id);
+      } else if (travel < 6) {
+        onSelectNode(currentDrag.nodeId, "click");
       }
       setDrag(null);
     }
@@ -83,7 +88,7 @@ export function Canvas({
       window.removeEventListener("pointermove", handleMove);
       window.removeEventListener("pointerup", handleUp);
     };
-  }, [drag, nodes, onMergeNodes, onMoveNode]);
+  }, [drag, nodes, onMergeNodes, onMoveNode, onSelectNode]);
 
   return (
     <div className="canvas-surface">
@@ -96,15 +101,22 @@ export function Canvas({
         if (!item) return null;
         const isLeft = selection.leftNodeId === node.id;
         const isRight = selection.rightNodeId === node.id;
+        const isShaking = shakingNodeIds.has(node.id);
+        const nodeStyle = {
+          "--node-x": `${node.x}px`,
+          "--node-y": `${node.y}px`,
+        } as CSSProperties;
         return (
           <button
             key={node.id}
             type="button"
-            className={`canvas-node ${isLeft ? "is-left" : ""} ${isRight ? "is-right" : ""}`}
-            style={{ transform: `translate(${node.x}px, ${node.y}px)` }}
+            className={`canvas-node ${isLeft ? "is-left" : ""} ${isRight ? "is-right" : ""} ${
+              isShaking ? "is-shaking" : ""
+            }`}
+            style={nodeStyle}
             onPointerDown={(event) => {
               event.currentTarget.setPointerCapture(event.pointerId);
-              onSelectNode(node.id);
+              onSelectNode(node.id, "drag");
               setDrag({
                 nodeId: node.id,
                 startX: event.clientX,

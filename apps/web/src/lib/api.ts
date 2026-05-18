@@ -12,7 +12,16 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   });
 
   if (!response.ok) {
-    const message = await response.text();
+    const body = await response.text();
+    let message = body;
+    try {
+      const payload = JSON.parse(body) as { detail?: unknown };
+      if (typeof payload.detail === "string") {
+        message = payload.detail;
+      }
+    } catch {
+      message = body;
+    }
     throw new Error(message || `Request failed with ${response.status}`);
   }
 
@@ -30,3 +39,8 @@ export function craft(leftId: string, rightId: string): Promise<CraftResponse> {
   });
 }
 
+export function resetGame(): Promise<StateResponse> {
+  return request<StateResponse>("/api/reset", {
+    method: "POST",
+  });
+}

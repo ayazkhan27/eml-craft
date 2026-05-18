@@ -65,6 +65,14 @@ class Store:
             self._backfill_latex(conn)
             self._seed_goals(conn)
 
+    def reset_game(self) -> None:
+        with self.connect() as conn:
+            conn.execute("delete from recipes")
+            conn.execute("delete from items")
+            conn.execute("delete from goals")
+            self._seed_items(conn, (engine.seed_item(key) for key in STARTER_KEYS))
+            self._seed_goals(conn)
+
     def _migrate_items(self, conn: sqlite3.Connection) -> None:
         columns = {
             row["name"]

@@ -19,3 +19,4 @@ __pycache__/
 apps/api/.data/
 .DS_Store
 .repo-git/
+.playwright-cli/

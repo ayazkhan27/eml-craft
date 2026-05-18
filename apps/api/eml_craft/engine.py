@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 from dataclasses import dataclass
+from functools import cache, lru_cache
 from typing import Any
 
 import sympy as sp
@@ -24,12 +25,39 @@ LOCAL_DICT: dict[str, Any] = {
     "sin": sp.sin,
     "cos": sp.cos,
     "tan": sp.tan,
+    "sinh": sp.sinh,
+    "cosh": sp.cosh,
+    "tanh": sp.tanh,
 }
 
 SAMPLES = (
     {x: sp.Rational(3, 2), y: sp.Rational(5, 2), mu: 0, sigma: 1},
     {x: sp.Rational(2, 1), y: sp.Rational(7, 3), mu: sp.Rational(1, 3), sigma: 2},
     {x: sp.Rational(5, 4), y: sp.Rational(11, 5), mu: sp.Rational(1, 2), sigma: 3},
+)
+
+MAX_INTERACTIVE_DEPTH = 18
+MAX_INPUT_EXPRESSION_CHARS = 12_000
+MAX_INPUT_TREE_CHARS = 24_000
+MAX_RESULT_EXPRESSION_CHARS = 24_000
+MAX_RESULT_OPS = 2_500
+
+
+class ExpressionTooComplexError(ValueError):
+    """Raised when a craft request exceeds the interactive compute budget."""
+
+
+class InvalidExpressionError(ValueError):
+    """Raised when an EML result is undefined or non-finite."""
+
+
+INVALID_ATOMS = frozenset(
+    {
+        sp.S.ComplexInfinity,
+        sp.S.Infinity,
+        sp.S.NaN,
+        sp.S.NegativeInfinity,
+    }
 )
 
 
@@ -65,16 +93,28 @@ def normalize_expression(expr: sp.Expr) -> sp.Expr:
     return sp.simplify(simplified)
 
 
-def canonical_text(expr: sp.Expr) -> str:
-    return sp.sstr(normalize_expression(expr), order="lex")
+def has_invalid_atom(expr: sp.Expr) -> bool:
+    return any(expr.has(atom) for atom in INVALID_ATOMS)
 
 
-def latex_text(expr: sp.Expr) -> str:
-    return sp.latex(normalize_expression(expr), fold_frac_powers=True, mul_symbol="dot")
+def ensure_valid_expression(expr: sp.Expr) -> None:
+    if has_invalid_atom(expr):
+        raise InvalidExpressionError("EML result is undefined or non-finite.")
 
 
-def item_id_for(expr: sp.Expr) -> str:
-    digest = hashlib.sha256(canonical_text(expr).encode("utf-8")).hexdigest()[:16]
+def canonical_text(expr: sp.Expr, *, normalized: bool = False) -> str:
+    source = expr if normalized else normalize_expression(expr)
+    return sp.sstr(source, order="lex")
+
+
+def latex_text(expr: sp.Expr, *, normalized: bool = False) -> str:
+    source = expr if normalized else normalize_expression(expr)
+    return sp.latex(source, fold_frac_powers=True, mul_symbol="dot")
+
+
+def item_id_for(expr: sp.Expr, *, normalized: bool = False) -> str:
+    text = canonical_text(expr, normalized=normalized).encode("utf-8")
+    digest = hashlib.sha256(text).hexdigest()[:16]
     return f"item_{digest}"
 
 
@@ -83,8 +123,16 @@ def recipe_id_for(left_id: str, right_id: str) -> str:
     return f"recipe_{digest}"
 
 
+@cache
 def known_expr(entry: KnownExpression) -> sp.Expr:
     return normalize_expression(parse_expression(entry.expression))
+
+
+@lru_cache(maxsize=1)
+def known_canonical_map() -> dict[str, KnownExpression]:
+    return {
+        canonical_text(known_expr(entry), normalized=True): entry for entry in KNOWN_EXPRESSIONS
+    }
 
 
 def symbolic_equal(left: sp.Expr, right: sp.Expr) -> bool:
@@ -110,6 +158,9 @@ def numeric_equal(left: sp.Expr, right: sp.Expr) -> bool:
 
 def match_known(expr: sp.Expr) -> KnownExpression | None:
     normalized = normalize_expression(expr)
+    direct = known_canonical_map().get(canonical_text(normalized, normalized=True))
+    if direct:
+        return direct
     for entry in KNOWN_EXPRESSIONS:
         target = known_expr(entry)
         if symbolic_equal(normalized, target) or numeric_equal(normalized, target):
@@ -128,10 +179,10 @@ def seed_item(key: str) -> EngineItem:
     entry = KNOWN_BY_KEY[key]
     expr = normalize_expression(parse_expression(entry.expression))
     return EngineItem(
-        id=item_id_for(expr),
+        id=item_id_for(expr, normalized=True),
         label=entry.label,
-        latex=latex_text(expr),
-        expression=canonical_text(expr),
+        latex=latex_text(expr, normalized=True),
+        expression=canonical_text(expr, normalized=True),
         eml_tree=entry.label,
         depth=0,
         known=True,
@@ -139,19 +190,51 @@ def seed_item(key: str) -> EngineItem:
     )
 
 
+def ensure_interactive_budget(left: EngineItem, right: EngineItem) -> None:
+    next_depth = max(left.depth, right.depth) + 1
+    if next_depth > MAX_INTERACTIVE_DEPTH:
+        raise ExpressionTooComplexError(
+            "Combination exceeds the interactive depth budget; use the API batch path later."
+        )
+
+    expression_size = len(left.expression) + len(right.expression)
+    if expression_size > MAX_INPUT_EXPRESSION_CHARS:
+        raise ExpressionTooComplexError(
+            "Combination exceeds the interactive expression-size budget."
+        )
+
+    tree_size = len(left.eml_tree) + len(right.eml_tree)
+    if tree_size > MAX_INPUT_TREE_CHARS:
+        raise ExpressionTooComplexError("Combination exceeds the interactive EML-tree budget.")
+
+
+def ensure_result_budget(expr: sp.Expr, expression: str) -> None:
+    if len(expression) > MAX_RESULT_EXPRESSION_CHARS:
+        raise ExpressionTooComplexError("Result is too large for interactive crafting.")
+
+    ops = int(sp.count_ops(expr, visual=False))
+    if ops > MAX_RESULT_OPS:
+        raise ExpressionTooComplexError("Result is too complex for interactive crafting.")
+
+
 def combine(left: EngineItem, right: EngineItem) -> EngineResult:
+    ensure_interactive_budget(left, right)
     left_expr = parse_expression(left.expression)
     right_expr = parse_expression(right.expression)
     raw_expr = sp.exp(left_expr) - sp.log(right_expr)
+    ensure_valid_expression(raw_expr)
     normalized = normalize_expression(raw_expr)
+    ensure_valid_expression(normalized)
+    expression = canonical_text(normalized, normalized=True)
+    ensure_result_budget(normalized, expression)
     known = match_known(normalized)
     label = known.label if known else compact_eml_label(left.label, right.label)
     eml_tree = f"eml({left.eml_tree}, {right.eml_tree})"
     item = EngineItem(
-        id=item_id_for(normalized),
+        id=item_id_for(normalized, normalized=True),
         label=label,
-        latex=latex_text(normalized),
-        expression=canonical_text(normalized),
+        latex=latex_text(normalized, normalized=True),
+        expression=expression,
         eml_tree=eml_tree,
         depth=max(left.depth, right.depth) + 1,
         known=known is not None,
