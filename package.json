@@ -1,0 +1,25 @@
+{
+  "name": "eml-craft",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Infinite Craft-style expression discovery game for the EML operator.",
+  "workspaces": [
+    "apps/web",
+    "packages/shared"
+  ],
+  "scripts": {
+    "dev": "npm run dev:api & npm run dev:web",
+    "dev:api": "uv run --project apps/api uvicorn eml_craft.main:app --reload --host 127.0.0.1 --port 8000",
+    "dev:web": "npm run dev -w apps/web",
+    "build": "npm run build -w packages/shared && npm run build -w apps/web",
+    "typecheck": "npm run typecheck -w packages/shared && npm run typecheck -w apps/web",
+    "test": "npm run test -w packages/shared && npm run test -w apps/web",
+    "lint": "npm run lint -w apps/web",
+    "api:test": "uv run --project apps/api pytest",
+    "api:lint": "uv run --project apps/api ruff check ."
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}
+

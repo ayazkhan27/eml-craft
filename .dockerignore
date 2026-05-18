@@ -1,0 +1,14 @@
+node_modules
+dist
+build
+coverage
+.venv
+.pytest_cache
+.ruff_cache
+.mypy_cache
+__pycache__
+*.sqlite
+*.sqlite3
+*.db
+.repo-git
+
